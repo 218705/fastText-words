@@ -6,6 +6,7 @@ from os.path import basename, abspath, isdir, curdir
 from os import environ, system, remove
 from glob import glob
 from optparse import OptionParser
+from wordcloud import WordCloud
 import codecs
 import sys
 
@@ -120,7 +121,10 @@ if __name__ == "__main__":
         
             if not opts.dump_file:
 
-                files = ['dump_output.vec', 'dump_dict.vec', 'train.txt', 'validate.txt']
+                files = ['dump_output.vec',
+                         'dump_dict.vec',
+                         'train.txt',
+                         'validate.txt']
 
             else:
 
@@ -152,7 +156,8 @@ if __name__ == "__main__":
         
             print('Training fasttext model ...')
         
-        system(FASTTEXT_PATH + ' supervised -input ' + training_data_path + '/train.txt' + ' -output model -epoch 25 -lr 1.0'\
+        system(FASTTEXT_PATH + ' supervised -input ' + training_data_path\
+               + '/train.txt' + ' -output model -epoch 25 -lr 1.0'\
                + (' -verbose 0' if opts.quiet else ''))
 
         if not opts.quiet:
@@ -244,7 +249,7 @@ if __name__ == "__main__":
         words_dict[word_vector_pair[0]] = word_vector_pair[1]
 
     if not opts.quiet:
-        print('Creating hash table for all words from the model... done')
+        print('Creating hash table for all words from the model ... done')
         
     vectors = [word_vector_pair[1] for word_vector_pair in vectors]
 
@@ -270,10 +275,14 @@ if __name__ == "__main__":
 
             remove(model_bin_path)
         
-        labels_vectors = np.array([np.array(list(map(np.double, vector.split())))\
-                                   for vector in dump_output.strip().split('\n')[1:]])
+        labels_vectors = np.array([np.array(list(map(np.double,
+                                                     vector.split())))\
+                                   for vector in dump_output.strip()\
+                                   .split('\n')[1:]])
 
-        labels = [line.split()[0] for line in dump_dict.strip().split('\n')[-len(labels_vectors):]]
+        labels = [line.split()[0]\
+                  for line in dump_dict.strip()\
+                  .split('\n')[-len(labels_vectors):]]
         
         labels_with_vectors = list(zip(labels, labels_vectors))    
 
@@ -290,11 +299,14 @@ if __name__ == "__main__":
                 print('Reading ' + basename(opts.dump_file) + ' ... done')
 
         data = data.replace(u'\xa0', u'').split('\n')[:-1]
-        labels_with_vectors = [(line.split()[0], np.array(line.split()[1:], dtype=np.double))\
+        labels_with_vectors = [(line.split()[0],
+                                np.array(line.split()[1:], dtype=np.double))\
                                for line in data]
 
-        labels_vectors = np.array([label_vector_pair[1] for label_vector_pair in labels_with_vectors])
-        labels = [label_vector_pair[0] for label_vector_pair in labels_with_vectors]
+        labels_vectors = np.array([label_vector_pair[1]\
+                                   for label_vector_pair in labels_with_vectors])
+        labels = [label_vector_pair[0]\
+                  for label_vector_pair in labels_with_vectors]
 
     labels_hash_table = {}
     labels_dict = {}
@@ -304,10 +316,12 @@ if __name__ == "__main__":
         labels_hash_table[str(label_vector_pair[1])] = label_vector_pair[0]
         labels_dict[label_vector_pair[0]] = label_vector_pair[1]
 
-    distance = lambda x, y: 1 - np.exp(np.dot(x[:min(len(x), len(y))], y[:min(len(x), len(y))]))\
-               / np.exp(x[:min(len(x), len(labels_vectors[0]))]\
-                        * labels_vectors[:, :min(len(x), len(labels_vectors[0]))]).sum()
-
+    distance = lambda x, y: 1 - np.exp(np.dot(x[:min(len(x), len(y))],
+                                              y[:min(len(x), len(y))]))\
+               / np.array([np.exp(np.dot(x[:min(len(x), len(label_vector))],\
+                                         label_vector[:min(len(x), len(label_vector))]))\
+                           for label_vector in labels_vectors]).sum()
+    
     if opts.docpath:
 
         with codecs.open(opts.docpath, encoding='utf-8') as file:
@@ -336,7 +350,8 @@ if __name__ == "__main__":
 
             if word in words_dict.keys():
 
-                word_distance_pairs.append((word, distance(words_dict[word], label_vector)))
+                word_distance_pairs.append((word, distance(words_dict[word],
+                                                           label_vector)))
 
         word_distance_pairs = sorted(word_distance_pairs, key=key_func)
 
@@ -359,17 +374,19 @@ if __name__ == "__main__":
         for i in range(labels_count):
 
             if not opts.quiet:
-                print('Processing cluster no %d (calculating distances) ...' %(i+1), end='\r')
+                print('Processing cluster no %d (calculating distances) ...' %(i+1),
+                      end='\r')
             clusters[i] = [(word_vector, distance(word_vector, labels_vectors[i]))\
                            for word_vector in clusters[i]]
             if not opts.quiet:
-                print('Processing cluster no %d (sorting) ...              ' %(i+1), end='\r')
+                print('Processing cluster no %d (sorting) ...              ' %(i+1),
+                      end='\r')
 
             clusters[i] = sorted(clusters[i], key=key_func)
 
             if not opts.quiet:
-                print('Processing cluster no %d ... done                   ' %(i+1), end=('\n'\
-                if i == labels_count-1 else '\r'))
+                print('Processing cluster no %d ... done                   ' %(i+1),
+                      end=('\n' if i == labels_count-1 else '\r'))
 
     if opts.output == '-':
 
@@ -385,18 +402,51 @@ if __name__ == "__main__":
     if opts.docpath:
 
         print(document_label)
+
+        most_fit_words_dict = dict()
         
         for word_distance_pair in word_distance_pairs[:opts.words_count]:
             
-            print(word_distance_pair[0], str(1 - word_distance_pair[1]) if opts.print_weights else '', file=file)
+            print(word_distance_pair[0], str(1 - word_distance_pair[1])\
+                  if opts.print_weights else '', file=file)
 
+            most_fit_words_dict[word_distance_pair[0]] = 1 - word_distance_pair[1]
+            
+        wc = WordCloud()
+            
+        wc.generate_from_frequencies(most_fit_words_dict)
+
+        doc_id = opts.docpath.split('_')[1].split('.')[0]
+        
+        wc.to_file(document_label + '_' + doc_id + '.png')
+            
     else:
         
-        print(','.join([labels_hash_table[str(label_vector)] for label_vector in labels_vectors]), file=file)
+        print(','.join([labels_hash_table[str(label_vector)]\
+                        for label_vector in labels_vectors]), file=file)
         
         for i in range(opts.words_count):
 
-            print(','.join([words_hash_table[str(cluster[i][0])] for cluster in clusters]), file=file)
+            print(','.join([words_hash_table[str(cluster[i][0])]\
+                            for cluster in clusters]), file=file)
+            
+        for cluster, label in zip(clusters, labels):
+
+            most_fit_words_dict = dict()
+
+            for i in range(opts.words_count):
+
+                most_fit_words_dict[words_hash_table[str(cluster[i][0])]]\
+                                    = 1 - cluster[i][1]
+
+                print(words_hash_table[str(cluster[i][0])], 1 - cluster[i][1])
+
+            wc = WordCloud()
+
+            wc.generate_from_frequencies(most_fit_words_dict)
+
+            wc.to_file(label + '.png')
+        
 
     if opts.output != '-':
         
